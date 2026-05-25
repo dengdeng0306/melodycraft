@@ -114,23 +114,35 @@ const pianoRoll = new PianoRoll('pianoRollContainer', transport, trackManager);
 
 pianoRoll.onNotesChange = () => markDirty();
 
-// ─── 初始音轨 ───
+// ─── 初始音轨（首次运行才添加示例） ───
 
-trackManager.addTrack('旋律');
-trackManager.addTrack('和弦');
+const isFirstRun = !localStorage.getItem('melodycraft_has_visited');
+
+trackManager.addTrack('音轨 1');
 pianoRoll.activeTrackId = trackManager.tracks[0].id;
 
-const t0 = trackManager.tracks[0];
-t0.addNote(60, 0, 1);
-t0.addNote(62, 1, 0.5);
-t0.addNote(64, 2, 1);
-t0.addNote(67, 4, 2);
+if (isFirstRun) {
+  // 首次访问：添加示例音符，帮助用户了解怎么用
+  const t0 = trackManager.tracks[0];
+  t0.addNote(60, 0, 1);
+  t0.addNote(62, 1, 0.5);
+  t0.addNote(64, 2, 1);
+  t0.addNote(67, 4, 2);
+  t0.addNote(67, 6, 2);
+  t0.name = '示例旋律';
 
-const t1 = trackManager.tracks[1];
-t1.addNote(48, 0, 2);
-t1.addNote(52, 2, 2);
-t1.addNote(55, 4, 2);
-t1.instrumentType = 'square';
+  trackManager.addTrack('示例和弦');
+  const t1 = trackManager.tracks[1];
+  t1.addNote(48, 0, 2);
+  t1.addNote(52, 2, 2);
+  t1.addNote(55, 4, 2);
+  t1.addNote(55, 6, 2);
+  t1.instrumentType = 'square';
+  t1.volume = 0.15;
+
+  pianoRoll.activeTrackId = trackManager.tracks[0].id;
+  localStorage.setItem('melodycraft_has_visited', 'true');
+}
 
 // ─── 音轨面板 ───
 
@@ -425,7 +437,7 @@ document.getElementById('newProjectBtn').addEventListener('click', () => {
   trackManager.tracks = [];
   currentProjectId = null;
   currentProjectName = '未命名项目';
-  trackManager.addTrack('旋律');
+  trackManager.addTrack('音轨 1');
   pianoRoll.setActiveTrack(trackManager.tracks[0]?.id);
   pianoRoll.render();
   renderTrackList();

@@ -4,11 +4,11 @@
 let trackIdCounter = 0;
 
 export class Track {
-  constructor({ name = 'Track', color = '#3b82f6', instrumentType = 'triangle', volume = 0.3 } = {}) {
+  constructor({ name = 'Track', color = '#3b82f6', instrumentType = 'piano', volume = 0.3 } = {}) {
     this.id = trackIdCounter++;
     this.name = name;
     this.color = color;
-    this.instrumentType = instrumentType; // 'triangle' | 'square' | 'sawtooth' | 'sine'
+    this.instrumentType = instrumentType; // 'piano' | 'organ' | 'flute' | 'bass'
     this.volume = volume;
     this.muted = false;
     this.solo = false;

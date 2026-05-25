@@ -137,7 +137,7 @@ if (isFirstRun) {
   t1.addNote(52, 2, 2);
   t1.addNote(55, 4, 2);
   t1.addNote(55, 6, 2);
-  t1.instrumentType = 'square';
+  t1.instrumentType = 'organ';
   t1.volume = 0.15;
 
   pianoRoll.activeTrackId = trackManager.tracks[0].id;
@@ -160,10 +160,10 @@ function renderTrackList() {
         <input class="track-name" value="${track.name}" spellcheck="false" />
         <div class="track-controls">
           <select class="track-instrument">
-            <option value="triangle" ${track.instrumentType === 'triangle' ? 'selected' : ''}>🔺 三角波</option>
-            <option value="square" ${track.instrumentType === 'square' ? 'selected' : ''}>🔲 方波</option>
-            <option value="sawtooth" ${track.instrumentType === 'sawtooth' ? 'selected' : ''}>🔻 锯齿波</option>
-            <option value="sine" ${track.instrumentType === 'sine' ? 'selected' : ''}>〰️ 正弦波</option>
+            <option value="piano" ${track.instrumentType === 'piano' ? 'selected' : ''}>🎹 钢琴</option>
+            <option value="organ" ${track.instrumentType === 'organ' ? 'selected' : ''}>🎹 风琴</option>
+            <option value="flute" ${track.instrumentType === 'flute' ? 'selected' : ''}>🎵 长笛</option>
+            <option value="bass" ${track.instrumentType === 'bass' ? 'selected' : ''}>🎸 贝斯</option>
           </select>
           <input type="range" class="track-volume" min="0" max="1" step="0.05" value="${track.volume}" />
           <button class="btn-icon mute-btn" data-muted="${track.muted}">${track.muted ? '🔇' : '🔊'}</button>
@@ -325,7 +325,7 @@ function loadProject(id) {
   for (const t of data.tracks) {
     const track = trackManager.addTrack(t.name || '音轨');
     track.color = t.color || COLORS[colorIdx % COLORS.length];
-    track.instrumentType = t.instrumentType || 'triangle';
+    track.instrumentType = t.instrumentType || 'piano';
     track.volume = t.volume ?? 0.3;
     track.muted = !!t.muted;
     track.solo = !!t.solo;

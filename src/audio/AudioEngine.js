@@ -1,17 +1,39 @@
 /**
- * AudioEngine — 原生 Web Audio API
- * 支持多音轨播放（不同波形类型）
+ * AudioEngine — 原生 Web Audio API 乐器合成器
+ * 每种乐器使用不同的合成参数模拟真实音色
  */
 
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
+// 乐器定义
+const INSTRUMENTS = {
+  piano: {
+    label: '🎹 钢琴',
+    synth: 'piano',
+  },
+  organ: {
+    label: '🎹 风琴',
+    synth: 'organ',
+  },
+  flute: {
+    label: '🎵 长笛',
+    synth: 'flute',
+  },
+  bass: {
+    label: '🎸 贝斯',
+    synth: 'bass',
+  },
+};
+
+export { INSTRUMENTS };
 
 export class AudioEngine {
   constructor() {
     this.ctx = null;
     this.ready = false;
     this.currentTracks = [];
-    this._oscillators = [];
     this._masterGain = null;
+    this._nodes = []; // 所有活跃节点
   }
 
   async init() {
@@ -35,7 +57,7 @@ export class AudioEngine {
 
   async play() {
     await this.init();
-    this.stop(); // clear old
+    this.stop();
 
     const ctx = this.ctx;
     const bpm = this._bpm || 120;
@@ -43,45 +65,228 @@ export class AudioEngine {
     const now = ctx.currentTime;
 
     for (const track of this.currentTracks) {
-      const vol = track.muted ? 0 : (track.volume || 0.3);
+      if (track.muted) continue;
+      const vol = track.volume ?? 0.3;
+      const instr = track.instrumentType || 'piano';
+
       for (const note of track.notes) {
         const startTime = now + note.beat * beatDuration;
         const dur = Math.max(0.05, note.duration * beatDuration);
         const freq = this._keyToFreq(note.key);
-
-        const osc = ctx.createOscillator();
-        osc.type = track.instrumentType || 'triangle';
-        osc.frequency.setValueAtTime(freq, startTime);
-
-        const env = ctx.createGain();
-        env.gain.setValueAtTime(0, startTime);
-        env.gain.linearRampToValueAtTime(vol, startTime + 0.01);
-        env.gain.setValueAtTime(vol, startTime + dur - 0.05);
-        env.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
-
-        osc.connect(env);
-        env.connect(this._masterGain);
-        osc.start(startTime);
-        osc.stop(startTime + dur + 0.1);
-        this._oscillators.push(osc);
+        const nodes = this._createNote(ctx, instr, freq, dur, vol, startTime);
+        this._nodes.push(...nodes);
       }
     }
   }
 
-  stop() {
-    for (const osc of this._oscillators) {
-      try { osc.stop(); osc.disconnect(); } catch (e) { /* ok */ }
+  /**
+   * 根据乐器类型创建声音
+   */
+  _createNote(ctx, instrument, freq, dur, vol, startTime) {
+    const nodes = [];
+    const endTime = startTime + dur;
+
+    switch (instrument) {
+      case 'piano':
+        return this._synthPiano(ctx, freq, dur, vol, startTime, endTime);
+      case 'organ':
+        return this._synthOrgan(ctx, freq, dur, vol, startTime, endTime);
+      case 'flute':
+        return this._synthFlute(ctx, freq, dur, vol, startTime, endTime);
+      case 'bass':
+        return this._synthBass(ctx, freq, dur, vol, startTime, endTime);
+      default:
+        return this._synthPiano(ctx, freq, dur, vol, startTime, endTime);
     }
-    this._oscillators = [];
+  }
+
+  /**
+   * 🎹 钢琴：三角波 + 轻微谐波 + 快速衰减
+   */
+  _synthPiano(ctx, freq, dur, vol, startTime, endTime) {
+    const nodes = [];
+
+    // 主音（三角波）
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(freq, startTime);
+
+    const gain1 = ctx.createGain();
+    gain1.gain.setValueAtTime(0, startTime);
+    gain1.gain.linearRampToValueAtTime(vol * 0.7, startTime + 0.005); // fast attack
+    gain1.gain.exponentialRampToValueAtTime(vol * 0.1, startTime + dur * 0.3);
+    gain1.gain.exponentialRampToValueAtTime(0.001, endTime);
+
+    osc1.connect(gain1);
+    gain1.connect(this._masterGain);
+    osc1.start(startTime);
+    osc1.stop(endTime + 0.05);
+    nodes.push(osc1);
+
+    // 谐波（八度上方，三角波）
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(freq * 2, startTime);
+
+    const gain2 = ctx.createGain();
+    gain2.gain.setValueAtTime(0, startTime);
+    gain2.gain.linearRampToValueAtTime(vol * 0.15, startTime + 0.01);
+    gain2.gain.exponentialRampToValueAtTime(0.001, startTime + dur * 0.2);
+
+    osc2.connect(gain2);
+    gain2.connect(this._masterGain);
+    osc2.start(startTime);
+    osc2.stop(endTime + 0.05);
+    nodes.push(osc2);
+
+    // 噪声瞬态（模拟琴槌敲击）
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(vol * 0.08, startTime);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.03);
+
+    // 用方波+高频率模拟敲击瞬态
+    const noiseOsc = ctx.createOscillator();
+    noiseOsc.type = 'square';
+    noiseOsc.frequency.setValueAtTime(freq * 4, startTime);
+    noiseOsc.connect(noiseGain);
+    noiseGain.connect(this._masterGain);
+    noiseOsc.start(startTime);
+    noiseOsc.stop(startTime + 0.03);
+    nodes.push(noiseOsc);
+
+    return nodes;
+  }
+
+  /**
+   * 🎹 风琴：方波 + 正弦波混合 + 持续
+   */
+  _synthOrgan(ctx, freq, dur, vol, startTime, endTime) {
+    const nodes = [];
+
+    // 基础方波
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'square';
+    osc1.frequency.setValueAtTime(freq, startTime);
+
+    const gain1 = ctx.createGain();
+    gain1.gain.setValueAtTime(0, startTime);
+    gain1.gain.linearRampToValueAtTime(vol * 0.35, startTime + 0.03);
+    gain1.gain.setValueAtTime(vol * 0.35, endTime - 0.02);
+    gain1.gain.exponentialRampToValueAtTime(0.001, endTime);
+
+    osc1.connect(gain1);
+    gain1.connect(this._masterGain);
+    osc1.start(startTime);
+    osc1.stop(endTime + 0.05);
+    nodes.push(osc1);
+
+    // 五度上方正弦波
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(freq * 1.5, startTime);
+
+    const gain2 = ctx.createGain();
+    gain2.gain.setValueAtTime(0, startTime);
+    gain2.gain.linearRampToValueAtTime(vol * 0.2, startTime + 0.03);
+    gain2.gain.setValueAtTime(vol * 0.2, endTime - 0.02);
+    gain2.gain.exponentialRampToValueAtTime(0.001, endTime);
+
+    osc2.connect(gain2);
+    gain2.connect(this._masterGain);
+    osc2.start(startTime);
+    osc2.stop(endTime + 0.05);
+    nodes.push(osc2);
+
+    return nodes;
+  }
+
+  /**
+   * 🎵 长笛：正弦波 + 微弱三角波 + 轻柔起音
+   */
+  _synthFlute(ctx, freq, dur, vol, startTime, endTime) {
+    const nodes = [];
+
+    // 主音
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(freq, startTime);
+
+    const gain1 = ctx.createGain();
+    gain1.gain.setValueAtTime(0, startTime);
+    gain1.gain.linearRampToValueAtTime(vol * 0.5, startTime + 0.08); // slow attack
+    gain1.gain.setValueAtTime(vol * 0.5, endTime - 0.05);
+    gain1.gain.exponentialRampToValueAtTime(0.001, endTime);
+
+    osc1.connect(gain1);
+    gain1.connect(this._masterGain);
+    osc1.start(startTime);
+    osc1.stop(endTime + 0.05);
+    nodes.push(osc1);
+
+    // 轻微谐波
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(freq * 2, startTime);
+
+    const gain2 = ctx.createGain();
+    gain2.gain.setValueAtTime(0, startTime);
+    gain2.gain.linearRampToValueAtTime(vol * 0.06, startTime + 0.1);
+    gain2.gain.setValueAtTime(vol * 0.06, endTime - 0.05);
+    gain2.gain.exponentialRampToValueAtTime(0.001, endTime);
+
+    osc2.connect(gain2);
+    gain2.connect(this._masterGain);
+    osc2.start(startTime);
+    osc2.stop(endTime + 0.05);
+    nodes.push(osc2);
+
+    return nodes;
+  }
+
+  /**
+   * 🎸 贝斯：锯齿波 + 低通效果
+   */
+  _synthBass(ctx, freq, dur, vol, startTime, endTime) {
+    const nodes = [];
+
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(freq, startTime);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(freq * 3, startTime);
+    filter.frequency.exponentialRampToValueAtTime(freq, startTime + dur * 0.3);
+
+    const gain1 = ctx.createGain();
+    gain1.gain.setValueAtTime(0, startTime);
+    gain1.gain.linearRampToValueAtTime(vol * 0.5, startTime + 0.01);
+    gain1.gain.setValueAtTime(vol * 0.5, endTime - 0.03);
+    gain1.gain.exponentialRampToValueAtTime(0.001, endTime);
+
+    osc1.connect(filter);
+    filter.connect(gain1);
+    gain1.connect(this._masterGain);
+    osc1.start(startTime);
+    osc1.stop(endTime + 0.05);
+    nodes.push(osc1);
+
+    return nodes;
+  }
+
+  stop() {
+    for (const node of this._nodes) {
+      try { node.stop(); node.disconnect(); } catch (e) { /* ok */ }
+    }
+    this._nodes = [];
   }
 
   setBpm(bpm) {
     this._bpm = bpm;
   }
 
-  /**
-   * 离线渲染导出 WAV
-   */
+  // ─── 导出 ───
+
   async exportWav(tracks, bpm = 120) {
     if (!tracks || tracks.length === 0) return null;
 
@@ -93,8 +298,8 @@ export class AudioEngine {
 
     for (const track of tracks) {
       if (track.muted) continue;
-      const vol = track.volume || 0.3;
-      const oscType = track.instrumentType || 'triangle';
+      const vol = track.volume ?? 0.3;
+      const instr = track.instrumentType || 'piano';
 
       for (const note of track.notes) {
         const freq = this._keyToFreq(note.key);
@@ -103,36 +308,13 @@ export class AudioEngine {
 
         for (let i = 0; i < noteSamples && startSample + i < totalSamples; i++) {
           const t = i / sampleRate;
-          let sample = 0;
-
-          switch (oscType) {
-            case 'square':
-              sample = (t * freq) % 1 < 0.5 ? 1 : -1;
-              break;
-            case 'sawtooth':
-              sample = 2 * ((t * freq) % 1) - 1;
-              break;
-            case 'sine':
-              sample = Math.sin(2 * Math.PI * freq * t);
-              break;
-            case 'triangle':
-            default: {
-              const phase = (t * freq) % 1;
-              sample = phase < 0.5 ? 4 * phase - 1 : 3 - 4 * phase;
-              break;
-            }
-          }
-
-          const attack = Math.min(1, i / (sampleRate * 0.01));
-          const release = Math.max(0, 1 - (i / noteSamples));
-          const envelope = attack * release;
-
-          buffer[startSample + i] += sample * vol * envelope;
+          let sample = this._renderSample(instr, freq, t, noteSamples, sampleRate);
+          buffer[startSample + i] += sample * vol;
         }
       }
     }
 
-    // 防止削波
+    // 归一化
     let max = 0;
     for (let i = 0; i < totalSamples; i++) {
       const abs = Math.abs(buffer[i]);
@@ -143,6 +325,44 @@ export class AudioEngine {
     }
 
     return this._float32ToWav(buffer, sampleRate);
+  }
+
+  _renderSample(instr, freq, t, noteSamples, sampleRate) {
+    const envAttack = Math.min(1, t / 0.01);
+    const envRelease = Math.max(0, 1 - (t / (noteSamples / sampleRate)));
+
+    switch (instr) {
+      case 'piano': {
+        // 三角波主音
+        const phase1 = (t * freq) % 1;
+        const s1 = phase1 < 0.5 ? 4 * phase1 - 1 : 3 - 4 * phase1;
+        // 谐波
+        const phase2 = (t * freq * 2) % 1;
+        const s2 = phase2 < 0.5 ? 4 * phase2 - 1 : 3 - 4 * phase2;
+        // 快速衰减（钢琴音短）
+        const pianoEnv = Math.min(1, t / 0.005) * Math.max(0.001, Math.exp(-t * 8));
+        return (s1 * 0.6 + s2 * 0.15) * pianoEnv;
+      }
+      case 'organ': {
+        const s1 = (t * freq) % 1 < 0.5 ? 0.35 : -0.35;
+        const s2 = Math.sin(2 * Math.PI * freq * 1.5 * t) * 0.2;
+        return (s1 + s2) * envAttack * envRelease;
+      }
+      case 'flute': {
+        const s1 = Math.sin(2 * Math.PI * freq * t) * 0.5;
+        const s2 = Math.sin(2 * Math.PI * freq * 2 * t) * 0.06;
+        const slowAttack = Math.min(1, t / 0.08);
+        return (s1 + s2) * slowAttack * envRelease;
+      }
+      case 'bass': {
+        const s1 = 2 * ((t * freq) % 1) - 1;
+        // 模拟低通
+        const s2 = (s1 + (t * freq * 3) % 1 < 0.5 ? 1 : -1 * 0.15);
+        return (s1 * 0.5) * envAttack * envRelease;
+      }
+      default:
+        return 0;
+    }
   }
 
   _keyToFreq(key) {
@@ -188,7 +408,6 @@ export class AudioEngine {
       view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
       offset += 2;
     }
-
     return new Blob([arrayBuffer], { type: 'audio/wav' });
   }
 

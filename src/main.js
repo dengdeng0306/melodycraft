@@ -23,7 +23,8 @@ app.innerHTML = `
       <div class="topbar-left">
         <div class="logo">🎵 MelodyCraft <span class="logo-sub">· 音乐工坊</span></div>
         <div class="divider"></div>
-        <div id="projectName" class="project-name" contenteditable="false">未命名项目</div>
+        <input id="projectName" class="project-name" value="未命名项目" maxlength="30" />
+        <span id="dirtyIndicator" class="dirty-indicator"></span>
       </div>
       <div class="topbar-center">
         <button class="tool-btn active" data-tool="pencil">✏️ 画笔</button>
@@ -101,7 +102,10 @@ function markClean() {
 
 function updateTitleDisplay() {
   const el = document.getElementById('projectName');
-  el.textContent = currentProjectName + (dirty ? ' •' : '');
+  if (document.activeElement !== el) el.value = currentProjectName;
+  const indicator = document.getElementById('dirtyIndicator');
+  indicator.textContent = dirty ? '未保存' : '';
+  indicator.style.display = dirty ? 'inline' : 'none';
 }
 
 // ─── PianoRoll ───
@@ -194,6 +198,18 @@ function renderTrackList() {
     list.appendChild(item);
   }
 }
+
+// ─── 项目名编辑 ───
+
+document.getElementById('projectName').addEventListener('change', e => {
+  const name = e.target.value.trim() || '未命名项目';
+  currentProjectName = name;
+  markDirty();
+});
+
+document.getElementById('projectName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') e.target.blur();
+});
 
 trackManager.on('tracksChanged', renderTrackList);
 renderTrackList();

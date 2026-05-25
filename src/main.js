@@ -4,6 +4,8 @@ import { Transport } from './core/Transport.js';
 import { TrackManager } from './core/TrackManager.js';
 import { AudioEngine } from './audio/AudioEngine.js';
 
+const app = document.getElementById('app');
+
 // ─── 初始化核心模块 ───
 
 const transport = new Transport();
@@ -59,8 +61,6 @@ app.innerHTML = `
     </div>
   </div>
 `;
-
-const app = document.getElementById('app');
 
 // ─── PianoRoll 初始化 ───
 

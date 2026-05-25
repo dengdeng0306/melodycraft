@@ -112,7 +112,7 @@ function updateTitleDisplay() {
 
 const pianoRoll = new PianoRoll('pianoRollContainer', transport, trackManager);
 
-pianoRoll.onNotesChange = () => markDirty();
+pianoRoll.onNotesChange(() => markDirty());
 
 // ─── 初始音轨（首次运行才添加示例） ───
 
